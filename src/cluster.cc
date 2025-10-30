@@ -11,6 +11,7 @@
 #include <functional>
 #include <set>
 #include <queue>
+#include <functional>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -84,19 +85,25 @@ namespace {
 
 		// Initialization and destruction
 		void init_RM(const Data_t* data) {
-			center = Calloc(dim, Data_t);
+			//center = calloc(dim, Data_t);
+			center = new Data_t[dim];
 			memcpy(center, data, dim*sizeof(Data_t));
 
 			valid = true; merged = false;
 
-			members = Calloc(1, const Data_t*);
-			members[0]  = data;
+			//std::vector<Data_t> members_vec(num_members + rhs.num_members);
+			std::vector<Data_t> members(1);  // automatisch verwaltet
+			//members = calloc(1, const Data_t*);
+			members[0]  = data[0];
 			num_members = 1;
 		}
 		void destroy() {
-			center  = (Free(center), (Data_t*)0);
-			members = (Free(members), (const Data_t**)0);
-			num_members = 0;
+			//center  = (Free(center), (Data_t*)0);
+			delete[] center; center = nullptr;
+			delete[] members; members = nullptr;
+			//members = (Free(members), (const Data_t**)0);
+			//num_members = 0;
+
 		}
 
 		// Getters & Setters (many used in STL algorithms)
@@ -159,7 +166,8 @@ namespace {
 		void merge_in(ACluster& rhs) {
 			rhs.merged = true; rhs.valid = false;
 
-			members = Realloc(members, num_members+rhs.num_members, const Data_t*);
+			std::vector<Data_t> members_vec(num_members + rhs.num_members);
+			//members = Realloc(members, num_members+rhs.num_members, const Data_t*);
 			memcpy(members+num_members, rhs.members, rhs.num_members*sizeof(Data_t*));
 			num_members += rhs.num_members;
 	    
@@ -201,8 +209,13 @@ namespace {
     cluster(const Data_t* data, size_t obs, size_t dim, size_t k, Idx_t* assgn) {
 		ACluster::init_global(dim);
 
-		R::auto_ptr<ACluster> c_ap(Calloc(obs, ACluster));
-		ACluster *c_beg = c_ap.get(), *c_end = c_beg + obs;
+		std::vector<ACluster> c_ap(obs);
+		//auto c_ap = std::make_unique<ACluster[]>(obs);
+		//R::auto_ptr<ACluster> c_ap(calloc(obs, ACluster));
+		//ACluster *c_beg = c_ap.get(), *c_end = c_beg + obs;
+		ACluster *c_beg = c_ap.data();         
+		ACluster *c_end = c_beg + c_ap.size();
+
 		for (size_t i=0; i<obs; i++)  // Initialize clusters for row major data
 			c_beg[i].init_RM(&data[i*dim]);
 
@@ -211,14 +224,17 @@ namespace {
 			Rprintf("  Estimated clustering progress: %2.0f%% ...\n",std::min(99.0,((double)round)/max_rounds * 100.0));
 
 			// Only looking at "valid" clusters
-			c_end = std::partition(c_beg, c_end, std::mem_fun_ref(&ACluster::get_valid));
+			c_end = std::partition(c_beg, c_end, std::mem_fn(&ACluster::get_valid));
+
+			//c_end = std::partition(c_beg, c_end, std::mem_fun_ref(&ACluster::get_valid));
 						
 			// Hueristic to strip out singleton clusters
 			if (round == 5) {
 				for (ACluster *i=c_beg; i<c_end; i++)
 					if (i->get_num_members() == 1)
 						i->set_valid(false);
-				c_end = std::partition(c_beg, c_end, std::mem_fun_ref(&ACluster::get_valid));
+				//c_end = std::partition(c_beg, c_end, std::mem_fun_ref(&ACluster::get_valid));
+				c_end = std::partition(c_beg, c_end, std::mem_fn(&ACluster::get_valid));
 			}
 
 			// Stopping condition
